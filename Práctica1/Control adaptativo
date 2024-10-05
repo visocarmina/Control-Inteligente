@@ -1,0 +1,113 @@
+unsigned long dt_us = 100;             // muestreo en micro-segundos
+float dt = dt_us*0.000001;    // muestro en segudos
+unsigned long t1 = 0, t2 = 0; // Tiempos para intervalos
+unsigned long k = 0;          // Contador de muestras
+
+float rpm = 0, rpm_p =0;            // Velocidad y velocidad pasada
+float drpm_d = 0, drpm_f =0;     // derivada discreta y s. filtrada
+float alpha = 0.05;            // Coeficiente de filtro
+
+float kpa = 1.5022 , kda = 0.00063413 , kia = 67.7974;   // PID Agresivo
+float kps = 0.58045 , kds = 0.0004675 , kis = 25.7262;   // PID Suave
+float kp = 0.39416479 , kd = 0.00 , ki = 31.35995;   // PI 
+float e = 0, de = 0, inte = 0, en = 0; 
+float u = 0, usat = 0;        // SEÑAL DE CONTROL
+float PWM = 0;                  // SEÑAL PWM
+unsigned long rpm_sp = 0, rpm0 = 0;             // CONSIGAN DEL CONTROL
+
+
+#define sPWM 6
+#define IN1 7
+#define IN2 8
+
+unsigned long time_pul = 0;
+unsigned long inter_time = 0;
+unsigned long last_time = 0;
+
+
+String consigna;
+
+void setup() {
+  // Comunicación Serial
+  Serial.begin(115200);
+  attachInterrupt(digitalPinToInterrupt(2),contPulsoA, RISING);
+
+  // Salidas de control PWM
+  pinMode(sPWM,OUTPUT);
+  pinMode(IN1,OUTPUT);
+  pinMode(IN2,OUTPUT);
+}
+
+void loop() {
+  // El código se debe escribir entre la toma de los tiempo
+  t1 = micros();  //Muestra de tiempo 1
+    // ****************************************
+    // LEER CONSIGNA DE CONTROL
+      if(Serial.available()> 0){
+      consigna = Serial.readStringUntil('\n');
+      rpm_sp = consigna.toFloat();
+      }
+      
+      rpm = rpm0;            // Toma de muestra
+ 
+      drpm_d = (rpm-rpm_p)/dt;  // Derivada discreta
+
+      // Filtro de la velocidad 
+      drpm_f = alpha*drpm_d + (1-alpha)*drpm_f;
+      
+
+      /* Calcular elemetos del control */
+      ////////////////////////////////////
+      e = rpm_sp - rpm;             // ERROR 
+      de = - drpm_f;                // DERIVADA DEL ERROR
+      inte = inte + e*dt;          // INTEGRAL DEL ERROR
+      
+      en = e/140;                  // Error normalizado
+      if(1>=en>0.85){
+        PWM = 255;                 // lazo abierto
+      }
+
+      if(0.85>=en>0.5){
+        u = kpa*e + kda*de + kia*inte;  // PID agresivo, VOLTAJE
+        usat = constrain(u,0,12); // SATURACION
+        PWM = usat*21.25; // 255/12V = 42.5
+      }
+
+      if(0.5>=en>0.2){
+        u = kps*e + kds*de + kis*inte;  // PID agresivo, VOLTAJE
+        usat = constrain(u,0,12); // SATURACION
+        PWM = usat*21.25; // 255/12V = 42.5
+      }
+      if(0.2>=en){
+        u = kp*e + kd*de + ki*inte;  // PID agresivo, VOLTAJE
+        usat = constrain(u,0,12); // SATURACION
+        PWM = usat*21.25; // 255/12V = 42.5
+      }
+      
+             // MANDAR SEÑAL DE CONTROL COMO PWM
+      analogWrite(sPWM,PWM);
+      digitalWrite(IN1,HIGH);
+      digitalWrite(IN2,LOW);
+      
+      ////////////////////////////////////
+
+      k=k+1;                // Número de muestra
+      rpm_p = rpm;             // Guardar valor de th
+      
+      // Imprimir los valores 
+      Serial.print(rpm);
+      Serial.print(',');
+      Serial.println(PWM);
+    // ****************************************
+  t2 = micros();  //Muestra de tiempo 2
+  while((t2-t1)<dt_us){
+    t2 = micros();
+  }
+}
+
+void contPulsoA(){
+  time_pul = micros();
+  inter_time = time_pul - last_time;
+  last_time = time_pul;
+  rpm0 = (60*1000000)/(492*inter_time);
+}
