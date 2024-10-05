@@ -1,0 +1,21 @@
+float contA = 0;
+unsigned long time_pul = 0;
+unsigned long inter_time = 0;
+unsigned long last_time = 0;
+unsigned long rpm = 0;
+
+void setup() {
+  Serial.begin(115200);
+  attachInterrupt(digitalPinToInterrupt(2),contPulsoA, RISING);
+}
+
+void loop() {
+}
+
+void contPulsoA(){
+  time_pul = micros();
+  inter_time = time_pul - last_time;
+  last_time = time_pul;
+  rpm = (60*1000000)/(492*inter_time);
+  Serial.println(rpm);
+}
